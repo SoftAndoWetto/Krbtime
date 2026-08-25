@@ -1,0 +1,44 @@
+#!/bin/bash
+# krbtime <target-ip>            -> computes offset vs target, saves it
+# krbtime <command...>           -> runs command under faketime using saved offset
+
+STATE_FILE="/tmp/.krbtime_offset"
+
+# Mode 1: single argument -> treat as IP, fetch + save offset
+if [ $# -eq 1 ]; then
+    TARGET="$1"
+
+    OFFSET=$(sudo ntpdate -q "$TARGET" | awk '{print $4}' | cut -d. -f1)
+
+    if [ -z "$OFFSET" ]; then
+        echo "[!] Failed to get offset from $TARGET"
+        exit 1
+    fi
+
+    echo "$OFFSET" > "$STATE_FILE"
+    echo "[*] Offset from $TARGET: ${OFFSET}s (saved)"
+    exit 0
+fi
+
+# Mode 2: multiple arguments -> treat as command, apply saved offset
+if [ $# -ge 2 ]; then
+    if [ ! -f "$STATE_FILE" ]; then
+        echo "[!] No offset set. Run 'krbtime <target-ip>' first."
+        exit 1
+    fi
+
+    OFFSET=$(cat "$STATE_FILE")
+
+    if [ -z "$OFFSET" ]; then
+        echo "[!] Offset file is empty. Run 'krbtime <target-ip>' first."
+        exit 1
+    fi
+
+    faketime -f "${OFFSET}" "$@"
+    exit $?
+fi
+
+echo "Usage:"
+echo "  krbtime <target-ip>          # fetch and save offset"
+echo "  krbtime <command...>         # run command under saved offset"
+exit 1
